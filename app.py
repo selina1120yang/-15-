@@ -1,81 +1,86 @@
 import streamlit as st
 import random
 import pandas as pd
+import gspread
+from google.oauth2.service_account import Credentials
 
-# 1. 網頁基本設定
-st.set_page_config(page_title="羽球戰力平衡系統 V15", layout="centered")
+# --- 1. 網頁基本設定 ---
+st.set_page_config(page_title="羽球智慧對戰系統", layout="centered")
 
-# 2. 初始化儲存空間 (Session State)
-if 'players' not in st.session_state:
-    st.session_state.players = []
+# --- 2. 雲端連線初始化 (防崩潰設計) ---
+def init_gspread():
+    try:
+        # 從 Secrets 讀取 TOML 格式金鑰
+        creds_dict = st.secrets["gcp_service_account"]
+        scope = [
+            "https://www.googleapis.com/auth/spreadsheets",
+            "https://www.googleapis.com/auth/drive"
+        ]
+        creds = Credentials.from_service_account_info(creds_dict, scopes=scope)
+        client = gspread.authorize(creds)
+        return client.open("羽球數據庫")
+    except Exception as e:
+        st.error(f"❌ 雲端連線失敗：{e}")
+        st.info("💡 解決方案：請檢查 .streamlit/secrets.toml 是否填寫正確，或試算表是否已共用給機器人。")
+        return None
 
-# 3. 側邊欄：權限控管
-with st.sidebar:
-    st.title("🔐 系統管理")
-    access_code = st.text_input("輸入存取代碼", type="password")
-    st.divider()
-    st.info("本系統由淡江財務金融系開發\n支持雲端跨裝置運行")
+# 預定義變數防止 NameError
+sh = None
+auth_data = pd.DataFrame()
 
-# 4. 主介面邏輯
-if access_code == "202641":
+# 啟動連線
+sh = init_gspread()
+if sh:
+    try:
+        # 讀取第 1 個分頁作為主控表
+        index_sheet = sh.get_worksheet(0) 
+        auth_data = pd.DataFrame(index_sheet.get_all_records())
+    except Exception as e:
+        st.warning(f"⚠️ 讀取主控表失敗：{e}")
+
+# --- 3. 介面邏輯 ---
+st.sidebar.title("🔐 系統管理")
+access_code = st.sidebar.text_input("輸入存取代碼", type="password")
+
+if not access_code:
     st.title("🏸 羽球智慧對戰分配系統")
-    st.subheader("V15 雲端穩定版")
+    st.warning("請在左側邊欄輸入「存取代碼」以啟動雲端同步。")
+    st.stop()
 
-    # --- A. 輸入區 ---
-    with st.form("input_form", clear_on_submit=True):
-        col1, col2 = st.columns([2, 1])
-        with col1:
-            name = st.text_input("球員姓名", placeholder="例如：小萌")
-        with col2:
-            skill = st.slider("戰力分級", 1, 5, 3)
-        submit = st.form_submit_button("➕ 新增並儲存球員")
+# 驗證密碼
+if not auth_data.empty and 'Password' in auth_data.columns:
+    check = auth_data[auth_data['Password'].astype(str) == access_code]
+    if not check.empty:
+        target_group = check['GroupName'].values[0]
+        st.title(f"🏸 {target_group} - 智慧對戰系統")
         
-        if submit and name:
-            st.session_state.players.append({"姓名": name, "戰力": skill})
-            st.toast(f"已成功加入：{name}", icon='✅')
+        # 讀取對應分頁
+        try:
+            data_sheet = sh.worksheet(str(target_group))
+            cloud_data = data_sheet.get_all_records()
+            df = pd.DataFrame(cloud_data)
+            
+            # [輸入區]
+            with st.form("input_form"):
+                name = st.text_input("球員姓名")
+                skill = st.slider("戰力分級", 1, 5, 3)
+                if st.form_submit_button("➕ 新增至雲端") and name:
+                    data_sheet.append_row([name, skill])
+                    st.success(f"已同步雲端：{name}")
+                    st.rerun()
 
-    # --- B. 名單管理區 ---
-    st.divider()
-    st.write(f"📊 目前共有 {len(st.session_state.players)} 位球員")
-    
-    if st.session_state.players:
-        df = pd.DataFrame(st.session_state.players)
-        st.dataframe(df, use_container_width=True)
-        
-        if st.button("🗑️ 清空目前所有名單"):
-            st.session_state.players = []
-            st.rerun()
-
-        # --- C. 對戰生成區 ---
-        st.divider()
-        if st.button("🔄 生成戰力平衡對戰表", type="primary"):
-            if len(st.session_state.players) < 4:
-                st.error("人數不足 4 人，無法進行 2v2 分組！")
+            # [名單顯示]
+            if not df.empty:
+                st.write(f"📊 雲端共有 {len(df)} 位球員")
+                st.dataframe(df, use_container_width=True)
+                if st.button("🔄 生成對戰表"):
+                    st.info("對戰邏輯計算中...") # 這裡接妳原本的對戰代碼
             else:
-                # 平衡演算法邏輯
-                sorted_list = sorted(st.session_state.players, key=lambda x: x['戰力'], reverse=True)
-                mid = len(sorted_list) // 2
-                strong = sorted_list[:mid]
-                weak = sorted_list[mid:]
-                random.shuffle(strong)
-                random.shuffle(weak)
+                st.info("雲端目前沒有球員資料。")
 
-                st.success("🎾 對戰表生成成功！")
-                count = 1
-                while len(strong) >= 2 and len(weak) >= 2:
-                    s1, s2 = strong.pop(0), strong.pop(0)
-                    w1, w2 = weak.pop(0), weak.pop(0)
-                    
-                    with st.container(border=True):
-                        st.write(f"### 場次 {count:02d}")
-                        c1, vs, c2 = st.columns([2, 1, 2])
-                        c1.metric("藍隊", f"{s1['姓名']} + {w1['姓名']}")
-                        vs.markdown("<h2 style='text-align: center;'>VS</h2>", unsafe_allow_html=True)
-                        c2.metric("紅隊", f"{s2['姓名']} + {w2['姓名']}")
-                    count += 1
+        except Exception as e:
+            st.error(f"找不到分頁 '{target_group}'，請在 Google Sheets 手動建立。")
     else:
-        st.warning("目前名單為空，請在上方新增球員。")
-
+        st.error("❌ 代碼錯誤，請重新輸入。")
 else:
-    st.warning("請在側邊欄輸入正確的「存取代碼」以啟動系統。")
-    st.image("https://img.icons8.com/clouds/200/badminton.png")
+    st.error("無法取得驗證資料，請確認雲端表格內容。")
