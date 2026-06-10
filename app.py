@@ -100,7 +100,7 @@ if not auth_data.empty and 'Password' in auth_data.columns:
                     win_rate_str = df.at[index, 'WinRate']
                     wins = df.at[index, 'Wins']
                     losses = df.at[index, 'Losses']
-                    c1.write(f"👤 **{p_name}** (Lv.{row.get('Level')}) | 勝率: {win_rate_str} ({wins}勝{losses}敗)")
+                    c1.write(f"👤 **{p_name}** (Lv.{row.get('Level')}) | 勝率: `{win_rate_str}` ({wins}勝{losses}敗)")
                     
                     # 狀態勾選控制（下課功能）
                     current_status = (df.at[index, 'Status'] == '在場')
@@ -214,4 +214,16 @@ if not auth_data.empty and 'Password' in auth_data.columns:
                             ph.metric(label="⏳ 剩餘比賽時間", value=f"{mm:02d}:{ss:02d}")
                             time.sleep(1)
                         st.balloons()
-                        st.error("🚨 時間到!本輪比賽結束，請下場登記勝負並更換對戰組合！")
+                        st.error("🚨 時間到！本輪比賽結束，請下場登記勝負並更換對戰組合！")
+
+                    if res["leftover"]:
+                        st.divider()
+                        st.markdown("#### ⏳ 休息區（本次輪空人員）")
+                        for p in res["leftover"]:
+                            st.warning(f"👤 {p['PlayerName']} (Lv.{p['Level']})")
+            else:
+                st.warning("⚠️ 在場人數不足 4 人，無法進行 2V2 配對。")
+        else:
+            st.info("請先於上方名單維護新增球員數據。")
+    else:
+        st.error("❌ 系統密碼錯誤，請重新輸入。")
