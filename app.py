@@ -439,4 +439,3 @@ if not auth_data.empty and 'Password' in auth_data.columns:
         st.error("❌ 代碼錯誤")
 else:
     st.error("❌ 權限驗證失敗")
-```
