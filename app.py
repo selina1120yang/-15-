@@ -97,7 +97,7 @@ if not auth_data.empty and 'Password' in auth_data.columns:
                                 for p in team_a: st.write(f"🏸 {p['PlayerName']} (Lv.{p['Level']})")
                             with col2:
                                 avg_b = (team_b[0]['Level'] + team_b[1]['Level']) / 2
-                               _b = st.info(f"🔴 B 隊 (平均 Lv: {avg_b})")
+                                st.info(f"🔴 B 隊 (平均 Lv: {avg_b})")
                                 for p in team_b: st.write(f"🏸 {p['PlayerName']} (Lv.{p['Level']})")
                         
                         # ✨ 4. 休息區（把剩下沒排到球場的人抓出來顯示）
