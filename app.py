@@ -62,17 +62,17 @@ if not auth_data.empty and 'Password' in auth_data.columns:
 
             st.divider()
 
-            # --- 核心：絕對公平配對邏輯 ---
+            # --- 核心：智慧戰力平衡分配邏輯（支援同級隨機洗牌） ---
             if not df.empty:
                 total_players = len(df)
                 num_courts = total_players // 4
                 
                 if num_courts > 0:
-                      if st.button(f"🔥 執行「強弱互補」分配 ({num_courts} 個球場)"):
+                    if st.button(f"🔥 執行「強弱互補」分配 ({num_courts} 個球場)"):
                         # 1. 拿原本的名單轉成列表
                         all_players = df.to_dict('records')
                         
-                        # ✨ 先大洗牌（同分數的人順序就會亂掉，雨果跟數據庫就能對打）
+                        # ✨ 關鍵安全加強：在排序前，先大洗牌一次（打破原本輸入順序，讓同分的人互相對打）
                         random.shuffle(all_players)
                         
                         # 2. 依然維持原本的戰力由高到低排序
@@ -99,5 +99,12 @@ if not auth_data.empty and 'Password' in auth_data.columns:
                                 avg_b = (team_b[0]['Level'] + team_b[1]['Level']) / 2
                                 st.info(f"🔴 B 隊 (平均 Lv: {avg_b})")
                                 for p in team_b: st.write(f"🏸 {p['PlayerName']} (Lv.{p['Level']})")
+                else:
+                    st.warning("⚠️ 人數不足 4 人。")
+            else:
+                st.info("請先新增球員數據。")
+                
+        except Exception as e:
+            st.error(f"錯誤：{e}")
     else:
         st.error("❌ 代碼錯誤。")
