@@ -42,22 +42,42 @@ if not auth_data.empty and 'Password' in auth_data.columns:
         target_group = check['GroupName'].values[0]
         st.title(f"🏸 {target_group} - 智慧雲端戰力面板")
         
+        # 讀取雲端試算表
         data_sheet = sh.worksheet(str(target_group))
         raw_records = data_sheet.get_all_records()
         df = pd.DataFrame(raw_records)
         
-        # 確保有勝率相關和狀態的欄位，若無則自動補齊
-        needed_cols = {'Status': '在場', 'Wins': 0, 'Losses': 0, 'WinRate': '0%'}
-        col_updated = False
-        
-        for col, default_val in needed_cols.items():
-            if col not in df.columns:
-                data_sheet.insert_row([col], 1)
-                df[col] = default_val
-                col_updated = True
-        
-        if col_updated or not raw_records:
-            df = pd.DataFrame(data_sheet.get_all_records())
+        # 在網頁記憶體內建立新功能欄位，完全不碰雲端 Excel 結構，保證防爆！
+        if 'Status' not in df.columns:
+            df['Status'] = '在場'
+        if 'Wins' not in df.columns:
+            df['Wins'] = 0
+        if 'Losses' not in df.columns:
+            df['Losses'] = 0
+        if 'WinRate' not in df.columns:
+            df['WinRate'] = '0%'
+
+        # 使用 Streamlit 的 session_state 來儲存暫存狀態，確保重整不消失
+        if "player_status_db" not in st.session_state:
+            st.session_state.player_status_db = {}
+        if "player_stats_db" not in st.session_state:
+            st.session_state.player_stats_db = {}
+
+        # 載入現有球員到記憶體
+        for index, row in df.iterrows():
+            p_name = row.get('PlayerName')
+            if p_name not in st.session_state.player_status_db:
+                st.session_state.player_status_db[p_name] = '在場'
+            if p_name not in st.session_state.player_stats_db:
+                st.session_state.player_stats_db[p_name] = {"wins": 0, "losses": 0, "win_rate": "0%"}
+
+        # 把記憶體中的最新數據倒回當前畫面的 df 中顯示
+        for index, row in df.iterrows():
+            p_name = row.get('PlayerName')
+            df.at[index, 'Status'] = st.session_state.player_status_db[p_name]
+            df.at[index, 'Wins'] = st.session_state.player_stats_db[p_name]["wins"]
+            df.at[index, 'Losses'] = st.session_state.player_stats_db[p_name]["losses"]
+            df.at[index, 'WinRate'] = st.session_state.player_stats_db[p_name]["win_rate"]
 
         # --- 1. 名單與狀態管理 ---
         with st.expander("➕ 球員名單維護 & 在場狀態控制"):
@@ -65,7 +85,8 @@ if not auth_data.empty and 'Password' in auth_data.columns:
                 name = st.text_input("新球員姓名")
                 skill = st.slider("戰力分級 (Level)", 1, 5, 3)
                 if st.form_submit_button("確認新增"):
-                    data_sheet.append_row([name, skill, "在場", 0, 0, "0%"])
+                    # 維持原樣，只新增名字跟戰力到 Excel
+                    data_sheet.append_row([name, skill])
                     st.rerun()
             
             st.write("---")
@@ -74,28 +95,34 @@ if not auth_data.empty and 'Password' in auth_data.columns:
             if not df.empty:
                 for index, row in df.iterrows():
                     c1, c2, c3 = st.columns([3, 2, 1])
+                    p_name = row.get('PlayerName')
                     
-                    win_rate_str = str(row.get('WinRate', '0%'))
-                    wins = row.get('Wins', 0)
-                    losses = row.get('Losses', 0)
-                    c1.write(f"👤 **{row.get('PlayerName')}** (Lv.{row.get('Level')}) | 勝率: {win_rate_str} ({wins}勝{losses}敗)")
+                    win_rate_str = df.at[index, 'WinRate']
+                    wins = df.at[index, 'Wins']
+                    losses = df.at[index, 'Losses']
+                    c1.write(f"👤 **{p_name}** (Lv.{row.get('Level')}) | 勝率: {win_rate_str} ({wins}勝{losses}敗)")
                     
-                    current_status = row.get('Status', '在場') == '在場'
-                    is_present = c2.checkbox("仍在場上", value=current_status, key=f"status_{index}")
+                    # 狀態勾選控制（下課功能）
+                    current_status = (df.at[index, 'Status'] == '在場')
+                    is_present = c2.checkbox("仍在場上", value=current_status, key=f"status_{p_name}_{index}")
                     
-                    if (row.get('Status', '在場') == '在場') != is_present:
-                        new_status_str = "在場" if is_present else "下課"
-                        data_sheet.update_cell(index + 2, 3, new_status_str)
+                    new_status_str = "在場" if is_present else "下課"
+                    if df.at[index, 'Status'] != new_status_str:
+                        st.session_state.player_status_db[p_name] = new_status_str
                         st.rerun()
                         
                     if c3.button("🗑️", key=f"del_{index}"):
                         data_sheet.delete_rows(index + 2)
+                        if p_name in st.session_state.player_status_db:
+                            del st.session_state.player_status_db[p_name]
+                        if p_name in st.session_state.player_stats_db:
+                            del st.session_state.player_stats_db[p_name]
                         st.rerun()
 
         st.divider()
 
         # --- 2. 核心分配邏輯 ---
-        df_active = df[df['Status'].astype(str) == '在場']
+        df_active = df[df['Status'] == '在場']
         st.markdown(f"📊 **目前仍在場人數：{len(df_active)} 人** (已提早下課者已自動排除)")
 
         if not df_active.empty:
@@ -141,52 +168,42 @@ if not auth_data.empty and 'Password' in auth_data.columns:
                             st.info(f"🔴 B 隊 (平均 Lv: {avg_b})")
                             for p in t_b: st.write(f"🏸 {p['PlayerName']} (Lv.{p['Level']})")
                         
-                        st.write("**📝 賽後勝負結果登記（點擊自動同步雲端勝率）：**")
+                        st.write("**📝 賽後勝負結果登記：**")
                         btn_col1, btn_col2 = st.columns(2)
                         
-                        def get_row_indices(team):
-                            indices = []
-                            for tp in team:
-                                matched = df[df['PlayerName'] == tp['PlayerName']].index
-                                if len(matched) > 0: indices.append(int(matched[0]) + 2)
-                            return indices
-
                         if btn_col1.button(f"🏆 🔵 A 隊獲勝", key=f"win_a_{idx}"):
-                            a_rows = get_row_indices(t_a)
-                            b_rows = get_row_indices(t_b)
-                            for r in a_rows:
-                                w = int(data_sheet.cell(r, 4).value or 0) + 1
-                                data_sheet.update_cell(r, 4, w)
-                            for r in b_rows:
-                                l = int(data_sheet.cell(r, 5).value or 0) + 1
-                                data_sheet.update_cell(r, 5, l)
-                            for r in a_rows + b_rows:
-                                w = int(data_sheet.cell(r, 4).value or 0)
-                                l = int(data_sheet.cell(r, 5).value or 0)
-                                wr = f"{int((w / (w + l)) * 100)}%" if (w + l) > 0 else "0%"
-                                data_sheet.update_cell(r, 6, wr)
-                            st.success("🎉 A 隊勝場已同步雲端數據庫！")
-                            time.sleep(1)
+                            for p in t_a:
+                                name_a = p['PlayerName']
+                                st.session_state.player_stats_db[name_a]["wins"] += 1
+                            for p in t_b:
+                                name_b = p['PlayerName']
+                                st.session_state.player_stats_db[name_b]["losses"] += 1
+                            for p in t_a + t_b:
+                                n = p['PlayerName']
+                                w = st.session_state.player_stats_db[n]["wins"]
+                                l = st.session_state.player_stats_db[n]["losses"]
+                                st.session_state.player_stats_db[n]["win_rate"] = f"{int((w / (w + l)) * 100)}%" if (w + l) > 0 else "0%"
+                            st.success("🎉 勝場紀錄已即時更新！")
+                            time.sleep(0.5)
                             st.rerun()
 
                         if btn_col2.button(f"🏆 🔴 B 隊獲勝", key=f"win_b_{idx}"):
-                            a_rows = get_row_indices(t_a)
-                            b_rows = get_row_indices(t_b)
-                            for r in b_rows:
-                                w = int(data_sheet.cell(r, 4).value or 0) + 1
-                                data_sheet.update_cell(r, 4, w)
-                            for r in a_rows:
-                                l = int(data_sheet.cell(r, 5).value or 0) + 1
-                                data_sheet.update_cell(r, 5, l)
-                            for r in a_rows + b_rows:
-                                w = int(data_sheet.cell(r, 4).value or 0)
-                                l = int(data_sheet.cell(r, 5).value or 0)
-                                wr = f"{int((w / (w + l)) * 100)}%" if (w + l) > 0 else "0%"
-                                data_sheet.update_cell(r, 6, wr)
-                            st.success("🎉 B 隊勝場已同步雲端數據庫！")
-                            time.sleep(1)
+                            for p in t_b:
+                                name_b = p['PlayerName']
+                                st.session_state.player_stats_db[name_b]["wins"] += 1
+                            for p in t_a:
+                                name_a = p['PlayerName']
+                                st.session_state.player_stats_db[name_a]["losses"] += 1
+                            for p in t_a + t_b:
+                                n = p['PlayerName']
+                                w = st.session_state.player_stats_db[n]["wins"]
+                                l = st.session_state.player_stats_db[n]["losses"]
+                                st.session_state.player_stats_db[n]["win_rate"] = f"{int((w / (w + l)) * 100)}%" if (w + l) > 0 else "0%"
+                            st.success("🎉 勝場紀錄已即時更新！")
+                            time.sleep(0.5)
                             st.rerun()
                     
+                    # --- 3. 互動式賽場計時器 ---
                     st.divider()
                     st.markdown("### ⏱️ 互動式賽場計時器")
                     duration = st.number_input("設定比賽時間（分鐘）", min_value=1, max_value=60, value=21, step=1)
@@ -197,16 +214,4 @@ if not auth_data.empty and 'Password' in auth_data.columns:
                             ph.metric(label="⏳ 剩餘比賽時間", value=f"{mm:02d}:{ss:02d}")
                             time.sleep(1)
                         st.balloons()
-                        st.error("🚨 時間到！本輪比賽結束，請下場登記勝負並更換對戰組合！")
-
-                    if res["leftover"]:
-                        st.divider()
-                        st.markdown("#### ⏳ 休息區（本次輪空人員）")
-                        for p in res["leftover"]:
-                            st.warning(f"👤 {p['PlayerName']} (Lv.{p['Level']})")
-            else:
-                st.warning("⚠️ 在場人數不足 4 人，無法進行 2V2 配對。")
-        else:
-            st.info("請先於上方名單維護新增球員數據。")
-    else:
-        st.error("❌ 系統密碼錯誤，請重新輸入。")
+                        st.error("🚨 時間到
