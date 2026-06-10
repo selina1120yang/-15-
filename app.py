@@ -62,7 +62,7 @@ if not auth_data.empty and 'Password' in auth_data.columns:
 
             st.divider()
 
-            # --- 核心：智慧戰力平衡分配邏輯（支援同級隨機洗牌） ---
+            # --- 核心：智慧戰力平衡分配邏輯 ---
             if not df.empty:
                 total_players = len(df)
                 num_courts = total_players // 4
@@ -72,7 +72,7 @@ if not auth_data.empty and 'Password' in auth_data.columns:
                         # 1. 拿原本的名單轉成列表
                         all_players = df.to_dict('records')
                         
-                        # ✨ 關鍵安全加強：在排序前，先大洗牌一次（打破原本輸入順序，讓同分的人互相對打）
+                        # ✨ 先大洗牌（同分數的人順序就會亂掉，雨果跟數據庫就能對打）
                         random.shuffle(all_players)
                         
                         # 2. 依然維持原本的戰力由高到低排序
@@ -80,13 +80,13 @@ if not auth_data.empty and 'Password' in auth_data.columns:
                         
                         st.balloons()
                         
+                        # 3. 分配球場
                         for i in range(num_courts):
                             st.markdown(f"#### 🏟️ 球場 {i+1}")
                             
-                            # 3. 抓出這場球的 4 個人
                             court_set = players_sorted[i*4 : (i+1)*4]
                             
-                            # 4. 嚴格執行強弱互補：(最強+最弱) vs (次強+三強)
+                            # 嚴格執行強弱互補：(最強+最弱) vs (次強+三強)
                             team_a = [court_set[0], court_set[3]]
                             team_b = [court_set[1], court_set[2]]
                             
@@ -97,8 +97,17 @@ if not auth_data.empty and 'Password' in auth_data.columns:
                                 for p in team_a: st.write(f"🏸 {p['PlayerName']} (Lv.{p['Level']})")
                             with col2:
                                 avg_b = (team_b[0]['Level'] + team_b[1]['Level']) / 2
-                                st.info(f"🔴 B 隊 (平均 Lv: {avg_b})")
+                               _b = st.info(f"🔴 B 隊 (平均 Lv: {avg_b})")
                                 for p in team_b: st.write(f"🏸 {p['PlayerName']} (Lv.{p['Level']})")
+                        
+                        # ✨ 4. 休息區（把剩下沒排到球場的人抓出來顯示）
+                        leftover = players_sorted[num_courts*4:]
+                        if leftover:
+                            st.divider()
+                            st.markdown("#### ⏳ 休息區（本次輪空）")
+                            for p in leftover:
+                                st.warning(f"👤 {p['PlayerName']} (Lv.{p['Level']})")
+                                
                 else:
                     st.warning("⚠️ 人數不足 4 人。")
             else:
