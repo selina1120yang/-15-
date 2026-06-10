@@ -68,20 +68,25 @@ if not auth_data.empty and 'Password' in auth_data.columns:
                 num_courts = total_players // 4
                 
                 if num_courts > 0:
-                    if st.button(f"🔥 執行「強弱互補」分配 ({num_courts} 個球場)"):
-                        # 1. 依戰力由高到低排序
-                        players_sorted = df.sort_values(by='Level', ascending=False).to_dict('records')
+                      if st.button(f"🔥 執行「強弱互補」分配 ({num_courts} 個球場)"):
+                        # 1. 拿原本的名單轉成列表
+                        all_players = df.to_dict('records')
+                        
+                        # ✨ 先大洗牌（同分數的人順序就會亂掉，雨果跟數據庫就能對打）
+                        random.shuffle(all_players)
+                        
+                        # 2. 依然維持原本的戰力由高到低排序
+                        players_sorted = sorted(all_players, key=lambda x: x['Level'], reverse=True)
                         
                         st.balloons()
                         
                         for i in range(num_courts):
-                            st.markdown(f"#### 🏟️ 球場 {i+1} (強弱平衡模式)")
+                            st.markdown(f"#### 🏟️ 球場 {i+1}")
                             
-                            # 2. 抓出目前最強的 4 個人
+                            # 3. 抓出這場球的 4 個人
                             court_set = players_sorted[i*4 : (i+1)*4]
                             
-                            # 3. 戰力排序：[最強, 次強, 三強, 最弱]
-                            # 分組方式：(最強 + 最弱) vs (次強 + 三強)
+                            # 4. 嚴格執行強弱互補：(最強+最弱) vs (次強+三強)
                             team_a = [court_set[0], court_set[3]]
                             team_b = [court_set[1], court_set[2]]
                             
@@ -94,18 +99,5 @@ if not auth_data.empty and 'Password' in auth_data.columns:
                                 avg_b = (team_b[0]['Level'] + team_b[1]['Level']) / 2
                                 st.info(f"🔴 B 隊 (平均 Lv: {avg_b})")
                                 for p in team_b: st.write(f"🏸 {p['PlayerName']} (Lv.{p['Level']})")
-                        
-                        # 4. 剩餘人員
-                        leftover = players_sorted[num_courts*4:]
-                        if leftover:
-                            names = [p['PlayerName'] for p in leftover]
-                            st.warning(f"⏳ 休息區：{', '.join(names)}")
-                else:
-                    st.warning("⚠️ 人數不足 4 人。")
-            else:
-                st.info("請先新增球員數據。")
-                
-        except Exception as e:
-            st.error(f"錯誤：{e}")
     else:
         st.error("❌ 代碼錯誤。")
