@@ -214,4 +214,4 @@ if not auth_data.empty and 'Password' in auth_data.columns:
                             ph.metric(label="⏳ 剩餘比賽時間", value=f"{mm:02d}:{ss:02d}")
                             time.sleep(1)
                         st.balloons()
-                        st.error("🚨 時間到
+                        st.error("🚨 時間到!本輪比賽結束，請下場登記勝負並更換對戰組合！")
